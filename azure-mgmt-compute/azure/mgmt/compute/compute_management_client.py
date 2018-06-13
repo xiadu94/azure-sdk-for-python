@@ -60,7 +60,7 @@ class ComputeManagementClient(MultiApiClientMixin):
     By default, uses latest API version available on public Azure.
     For production, you should stick a particular api-version and/or profile.
     The profile sets a mapping between the operation group and an API version.
-    The api-version parameter sets the default API version if the operation 
+    The api-version parameter sets the default API version if the operation
     group is not described in the profile.
 
     :ivar config: Configuration for client.
@@ -80,13 +80,11 @@ class ComputeManagementClient(MultiApiClientMixin):
     :type profile: azure.profiles.KnownProfiles
     """
 
-    DEFAULT_API_VERSION = '2017-12-01'
+    DEFAULT_API_VERSION = '2018-04-01'
     _PROFILE_TAG = "azure.mgmt.compute.ComputeManagementClient"
     LATEST_PROFILE = ProfileDefinition({
         _PROFILE_TAG: {
-            'disks': '2018-04-01',
             'resource_skus': '2017-09-01',
-            'snapshots': '2018-04-01',
             None: DEFAULT_API_VERSION
         }},
         _PROFILE_TAG + " latest"
@@ -148,7 +146,7 @@ class ComputeManagementClient(MultiApiClientMixin):
             from .v2018_06_01 import models
             return models
         raise NotImplementedError("APIVersion {} is not available".format(api_version))
-    
+
     @property
     def availability_sets(self):
         """Instance depends on the API version:

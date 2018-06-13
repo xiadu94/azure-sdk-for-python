@@ -51,7 +51,7 @@ class MgmtComputeTest(AzureMgmtTestCase):
 
     def create_storage_account(self, group_name, location, storage_name):
         params_create = azure.mgmt.storage.models.StorageAccountCreateParameters(
-            sku=azure.mgmt.storage.models.Sku(azure.mgmt.storage.models.SkuName.standard_lrs),
+            sku=azure.mgmt.storage.models.Sku(name=azure.mgmt.storage.models.SkuName.standard_lrs),
             kind=azure.mgmt.storage.models.Kind.storage,
             location=location
         )
@@ -199,7 +199,7 @@ class MgmtComputeTest(AzureMgmtTestCase):
         )
         vm_result = result_create.result()
         self.assertEqual(vm_result.name, names.vm)
-    
+
         # Get by name
         result_get = self.compute_client.virtual_machines.get(
             resource_group.name,
@@ -298,7 +298,75 @@ class MgmtComputeTest(AzureMgmtTestCase):
             }
         )
         capture_result = async_capture.result()
-        self.assertTrue(hasattr(capture_result, 'output'))
+        assert capture_result.content_version == "1.0.0.0"
+
+    @ResourceGroupPreparer()
+    def test_virtual_machine_capture_legacy(self, resource_group, location):
+        """Test legacy Capture with 2017-12-01.
+        """
+        compute_client = self.create_mgmt_client(
+            azure.mgmt.compute.ComputeManagementClient,
+            api_version="2017-12-01"
+        )
+
+        virtual_machines_models = compute_client.virtual_machines.models
+        names = self.get_resource_names('pyvmir')
+        os_vhd_uri = self.get_vhd_uri(names.storage, 'osdisk')
+
+        if not self.is_playback():
+            self.create_storage_account(resource_group.name, location, names.storage)
+            subnet = self.create_virtual_network(resource_group.name, location, names.network, names.subnet)
+            nic_id = self.create_network_interface(resource_group.name, location, names.nic, subnet)
+        else:
+            nic_id = ("/subscriptions/00000000-0000-0000-0000-000000000000"
+                      "/resourceGroups/test_mgmt_compute_test_virtual_machine_capturec0f9130c"
+                      "/providers/Microsoft.Network/networkInterfaces/pyvmirnicc0f9130c")
+
+        storage_profile = self.get_storage_profile(os_vhd_uri)
+        storage_profile.image_reference = virtual_machines_models.ImageReference(
+            publisher='Canonical',
+            offer='UbuntuServer',
+            sku='16.04.0-LTS',
+            version='latest'
+        )
+
+        params_create = virtual_machines_models.VirtualMachine(
+            location=location,
+            os_profile=self.get_os_profile(resource_group.name),
+            hardware_profile=self.get_hardware_profile(),
+            network_profile=self.get_network_profile(nic_id),
+            storage_profile=storage_profile,
+        )
+
+        # Create VM test
+        result_create = compute_client.virtual_machines.create_or_update(
+            resource_group.name,
+            names.vm,
+            params_create,
+        )
+        vm_result = result_create.result()
+        self.assertEqual(vm_result.name, names.vm)
+
+        # Deallocate
+        async_vm_deallocate = compute_client.virtual_machines.deallocate(resource_group.name, names.vm)
+        async_vm_deallocate.wait()
+
+        # Generalize (possible because deallocated)
+        compute_client.virtual_machines.generalize(resource_group.name, names.vm)
+
+        # Capture VM (VM must be generalized before)
+        async_capture = compute_client.virtual_machines.capture(
+            resource_group.name,
+            names.vm,
+            {
+                "vhd_prefix":"pslib",
+                "destination_container_name":"dest",
+                "overwrite_vhds": True
+            }
+        )
+        capture_result = async_capture.result()
+        # Old format from azure-asyncoperation header
+        assert capture_result.output["contentVersion"] == "1.0.0.0"
 
     @ResourceGroupPreparer()
     def test_vm_extensions(self, resource_group, location):
